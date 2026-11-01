@@ -1,0 +1,14 @@
+{
+  "domain": "netlea",
+  "name": "Netlea 尼特利水族灯",
+  "codeowners": [
+    "@one-gigabyte"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/one-gigabyte/netlea-home-assistant",
+  "issue_tracker": "https://github.com/one-gigabyte/netlea-home-assistant/issues",
+  "dependencies": [],
+  "requirements": [],
+  "iot_class": "cloud_push",
+  "version": "0.3.6"
+}

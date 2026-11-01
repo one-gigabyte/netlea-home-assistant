@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+
+# 构建产物 / 本地临时文件
+*.tgz
+*.tar.gz
+*.log
+.netlea_token

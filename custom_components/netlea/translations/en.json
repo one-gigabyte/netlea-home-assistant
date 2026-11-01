@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "尼特利账号",
+        "description": "填写注册尼特利 App 的手机号以接收短信验证码；若已有 userToken 可直接粘贴（跳过短信）。",
+        "data": {
+          "phone": "手机号",
+          "token": "已有 token（可选）",
+          "user_id": "userId（可选，粘贴 token 时填写）"
+        }
+      },
+      "code": {
+        "title": "输入验证码",
+        "description": "验证码已发送至 {phone}。",
+        "data": {
+          "code": "短信验证码"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "账号或 token 无效",
+      "cannot_connect": "无法连接尼特利服务器",
+      "sms_failed": "验证码发送失败，请稍后再试",
+      "no_credentials": "请填写手机号，或粘贴已有 token"
+    },
+    "abort": {
+      "already_configured": "该账号已配置"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "轮询设置",
+        "data": {
+          "scan_interval": "刷新间隔（秒）",
+          "user_id": "userId（可选）",
+          "lamp_mode": "下发的控制模式（lampMode）"
+        },
+        "description": "lampMode 决定 HA 下发的指令如何被设备执行。默认「自动」= 沿用设备当前模式，不改动你的行程设置。"
+      }
+    }
+  },
+  "services": {
+    "send_frame": {
+      "name": "发送原始指令帧",
+      "description": "直接向设备下发一帧数据（十六进制）。可用于调试或未映射的功能。",
+      "fields": {
+        "real_address": {
+          "name": "设备地址",
+          "description": "realAddress，例如 D4438A6633CF"
+        },
+        "frame": {
+          "name": "完整帧（hex）",
+          "description": "含校验字节的完整帧，例如 5a0c010f0000..."
+        },
+        "device_type": {
+          "name": "设备类型",
+          "description": "帧头 deviceType，灯具=1，UV=7"
+        },
+        "cmd": {
+          "name": "命令号",
+          "description": "帧头 cmd"
+        },
+        "body": {
+          "name": "帧体（hex）",
+          "description": "不含帧头与校验的负载"
+        },
+        "protocol": {
+          "name": "协议",
+          "description": "90 (0x5A) 或 106 (0x6A)"
+        },
+        "cmd_type": {
+          "name": "命令类型",
+          "description": "byte4/byte7，0=普通指令，16(0x10)=设置模式"
+        }
+      }
+    },
+    "build_frame": {
+      "name": "构造指令帧",
+      "description": "只计算帧内容并返回十六进制，不发送。",
+      "fields": {
+        "device_type": {
+          "name": "设备类型"
+        },
+        "cmd": {
+          "name": "命令号"
+        },
+        "body": {
+          "name": "帧体（hex）"
+        },
+        "protocol": {
+          "name": "协议"
+        },
+        "cmd_type": {
+          "name": "命令类型",
+          "description": "byte4/byte7，0=普通指令，16(0x10)=设置模式"
+        }
+      }
+    }
+  }
+}

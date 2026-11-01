@@ -1,0 +1,90 @@
+send_frame:
+  name: 发送原始指令帧
+  description: 直接向设备下发一帧数据（十六进制）。可用于调试或尚未映射的功能。
+  fields:
+    real_address:
+      name: 设备地址
+      description: realAddress，例如 A1B2C3D4E5F6
+      required: true
+      example: "A1B2C3D4E5F6"
+      selector:
+        text:
+    frame:
+      name: 完整帧（hex）
+      description: 含校验字节的完整帧；填写后忽略 cmd/body
+      example: "5a08011b0000007e"
+      selector:
+        text:
+    device_type:
+      name: 设备类型
+      description: 帧头 deviceType，灯具=1，UV=7；留空则取设备自身的类型
+      selector:
+        number:
+          min: 1
+          max: 255
+    cmd:
+      name: 命令号
+      description: 帧头 cmd，例如 27（查询主灯）、16（设置主灯）
+      selector:
+        number:
+          min: 0
+          max: 255
+    body:
+      name: 帧体（hex）
+      description: 不含帧头与校验的负载
+      example: "00"
+      selector:
+        text:
+    protocol:
+      name: 协议
+      description: "90 = 0x5A（默认），106 = 0x6A"
+      default: 90
+      selector:
+        number:
+          min: 90
+          max: 106
+    cmd_type:
+      name: 命令类型
+      description: byte4 / byte7，0=普通指令，16(0x10)=设置模式
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 255
+
+build_frame:
+  name: 构造指令帧
+  description: 只计算帧内容并返回十六进制，不发送。
+  fields:
+    device_type:
+      name: 设备类型
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+    cmd:
+      name: 命令号
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 255
+    body:
+      name: 帧体（hex）
+      selector:
+        text:
+    protocol:
+      name: 协议
+      default: 90
+      selector:
+        number:
+          min: 90
+          max: 106
+    cmd_type:
+      name: 命令类型
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 255
