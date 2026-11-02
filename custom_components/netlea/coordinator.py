@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -56,6 +57,10 @@ PRODUCT_TO_DEVTYPE = {
 
 INVENTORY_REFRESH = timedelta(minutes=5)
 
+# 指令下发后，若设备回报的开关状态与意图相反，先当作"在途的旧回报"忽略；
+# 超过这个秒数仍不一致，则以设备为准。
+INTENT_GRACE = 3.0
+
 
 @dataclass
 class NetleaDevice:
@@ -72,6 +77,16 @@ class NetleaDevice:
     last_seen: float | None = None
     raw_status_log: dict[str, Any] = field(default_factory=dict)
     cloud_power: bool | None = None
+    # Power the user asked for but the device has not confirmed yet.  Writes
+    # that do not carry an explicit `power` (channel / grade setters) inherit
+    # this instead of the stale `lampState` from the last device report --
+    # otherwise a scene that restores several entities in a row would switch
+    # the lamp back off with the value it had before the scene started.
+    intent_power: bool | None = None
+    intent_power_at: float = 0.0
+    # Last cmd-16 body we actually sent, used to swallow the burst of
+    # identical writes a scene restore produces.
+    last_body: bytes | None = None
     state: dict[int, dict[str, Any]] = field(default_factory=dict)
     last_frame: str | None = None
 
@@ -130,6 +145,10 @@ class NetleaDevice:
 
     @property
     def is_on(self) -> bool | None:
+        # An unconfirmed command wins until the device answers, so the UI does
+        # not flick back to the previous state mid-way through a scene.
+        if self.intent_power is not None:
+            return self.intent_power
         merged = self.merged_state()
         for key in ("lampState", "onOff", "isSwitch", "totalSwitch"):
             if key in merged:
@@ -261,6 +280,11 @@ class NetleaCoordinator(DataUpdateCoordinator[dict[str, NetleaDevice]]):
         if decoded:
             device.state[frame.cmd] = decoded
             self._infer_product(device, frame, decoded)
+            self._sync_intent(device, decoded)
+            if frame.cmd == 20:
+                # Full state report: whatever we sent last may be stale now
+                # (the app could have changed something), so drop the cache.
+                device.last_body = None
         _LOGGER.debug(
             "%s cmd=%s state=%s code=%s body=%s",
             device.real_address,
@@ -269,6 +293,26 @@ class NetleaCoordinator(DataUpdateCoordinator[dict[str, NetleaDevice]]):
             frame.code_name,
             frame.body.hex(),
         )
+
+    def _sync_intent(self, device: NetleaDevice, decoded: dict) -> None:
+        """Drop the optimistic power flag once the device has answered.
+
+        The device is authoritative, but a report that was already in flight
+        when we sent the command must not undo it -- hence the short grace
+        period for a contradicting report.
+        """
+        if device.intent_power is None or "lampState" not in decoded:
+            return
+        if bool(decoded["lampState"]) == device.intent_power:
+            device.intent_power = None
+        elif time.monotonic() - device.intent_power_at > INTENT_GRACE:
+            _LOGGER.debug(
+                "Netlea %s 未按指令切换（intent=%s, 设备回报=%s），以设备为准",
+                device.real_address,
+                device.intent_power,
+                decoded["lampState"],
+            )
+            device.intent_power = None
 
     def _infer_product(self, device: NetleaDevice, frame: Frame, decoded: dict) -> None:
         """Fall back to the frame's device type when the cloud row is ambiguous."""
@@ -492,7 +536,13 @@ class NetleaCoordinator(DataUpdateCoordinator[dict[str, NetleaDevice]]):
             # default spectrum so the switch produces light, not a black lamp.
             target = {"R": 37, "W": 31, "G": 55, "B": 34, "F": 0}
 
-        state = merged.get("lampState", 1) if power is None else int(bool(power))
+        if power is not None:
+            state = int(bool(power))
+        elif device.intent_power is not None:
+            # A pending switch-on must survive the following channel writes.
+            state = int(bool(device.intent_power))
+        else:
+            state = merged.get("lampState", 1)
         if lamp_mode is None:
             option = self.lamp_mode_option
             if option in (None, "", "auto"):
@@ -514,6 +564,16 @@ class NetleaCoordinator(DataUpdateCoordinator[dict[str, NetleaDevice]]):
             mode_id=merged.get("modeId", 0),
             grade=final_grade,
         )
+        if body == device.last_body:
+            # A scene restore touches every entity one after another; once the
+            # body stops changing there is nothing left to tell the device.
+            _LOGGER.debug(
+                "set_lamp %s 内容与上一帧相同，跳过发送", device.real_address
+            )
+            device.intent_power = bool(state)
+            device.intent_power_at = time.monotonic()
+            return
+
         _LOGGER.debug(
             "set_lamp %s state=%s mode=%s grade=%s channels=%s",
             device.real_address,
@@ -522,7 +582,11 @@ class NetleaCoordinator(DataUpdateCoordinator[dict[str, NetleaDevice]]):
             final_grade,
             target,
         )
-        await self._async_send(device, 16, body)
+        ok = await self._async_send(device, 16, body)
+        if ok:
+            device.intent_power = bool(state)
+            device.intent_power_at = time.monotonic()
+            device.last_body = body
 
     async def async_set_channel(self, device: NetleaDevice, key: str, value: int) -> None:
         await self.async_set_lamp(device, channels={key: value})
